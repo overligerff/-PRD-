@@ -49,9 +49,13 @@ def call_multimodal_ollama(image: Image.Image, prompt: str, model: str) -> str:
             }],
             options={
                 'temperature': 0.7,
-                'top_p': 0.8,
-                'top_k': 20,
-                'timeout': 120,
+                'top_p': 0.9,
+                'top_k': 30,
+                'timeout': 60,
+                'num_ctx': 1024,
+                'num_thread': 8,
+                'max_tokens': 500,
+                'num_gpu': 0,
             }
         )
         return response['message']['content']
@@ -66,12 +70,13 @@ def call_text_ollama(prompt: str, model: str, temperature: float = 0.2) -> str:
             messages=[{'role': 'user', 'content': prompt}],
             options={
                 'temperature': temperature,
-                'top_p': 0.8,
-                'top_k': 20,
-                'timeout': 60,
-                'num_ctx': 2048,
-                'num_thread': 4,
-                'max_tokens': 1000,
+                'top_p': 0.9,
+                'top_k': 30,
+                'timeout': 30,
+                'num_ctx': 1024,
+                'num_thread': 8,
+                'max_tokens': 500,
+                'num_gpu': 0,
             }
         )
         return response['message']['content']
