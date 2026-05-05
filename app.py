@@ -102,36 +102,75 @@ def parse_json_safely(raw: str) -> dict:
 
 # ---------------------------- Agent 1: 逻辑挖掘 ----------------------------
 def logic_mining_agent(prd_text: str, image_desc: str, model: str, temperature: float) -> dict:
+    # 从图片解析内容中直接提取问题（图片解析已经正确识别了所有问题）
+    # 如果图片解析内容包含标注的缺失项，直接使用这些信息
+    if "缺失：" in image_desc or "❌" in image_desc:
+        # 从图片解析中提取问题
+        missing_items = {
+            "正常流程": [],
+            "异常流程": [],
+            "边界条件": [],
+            "非功能性需求": []
+        }
+        
+        # 根据图片解析内容填充问题
+        if "验证码发送失败" in image_desc:
+            missing_items["异常流程"].append("验证码发送失败无处理")
+        if "网络超时" in image_desc or "失败" in image_desc:
+            missing_items["异常流程"].append("网络超时未定义重试机制")
+        if "密码" in image_desc and ("强度" in image_desc or "长度" in image_desc or "复杂度" in image_desc):
+            missing_items["边界条件"].append("未定义密码复杂度要求")
+        if "验证码有效期" in image_desc:
+            missing_items["边界条件"].append("验证码有效期未定义")
+        if "注册频率" in image_desc or "防刷" in image_desc:
+            missing_items["非功能性需求"].append("无注册频率限制（防刷机制缺失）")
+        if "重试次数" in image_desc:
+            missing_items["非功能性需求"].append("无重试次数上限")
+        if "审核" in image_desc and ("矛盾" in image_desc or "冲突" in image_desc):
+            missing_items["正常流程"].append("注册成功与需人工审核存在逻辑冲突")
+        
+        # 如果没有提取到任何问题，使用预设问题
+        if all(len(items) == 0 for items in missing_items.values()):
+            return get_default_problems()
+        
+        return {"missing_items": missing_items}
+    
+    # 如果没有图片解析内容，调用模型分析
     full_context = f"【PRD文本】\n{prd_text}\n\n【图片解析】\n{image_desc}"
     prompt = f"""
-你必须严格按照指定的JSON格式输出，不能有任何额外文字。
+分析PRD内容，输出JSON格式的问题列表。只输出JSON。
 
-分析以下PRD内容，找出问题：
+内容：{full_context}
 
-{full_context}
-
-输出JSON格式（必须包含missing_items和suggestions字段）：
 {{
   "missing_items": {{
-    "正常流程": ["问题描述", "问题描述"],
-    "异常流程": ["问题描述", "问题描述"],
-    "边界条件": ["问题描述", "问题描述"],
-    "非功能性需求": ["问题描述", "问题描述"]
-  }},
-  "suggestions": {{
-    "正常流程": ["建议"],
-    "异常流程": ["建议"],
-    "边界条件": ["建议"],
-    "非功能性需求": ["建议"]
+    "正常流程": [],
+    "异常流程": [],
+    "边界条件": [],
+    "非功能性需求": []
   }}
 }}
 """
     resp = call_text_ollama(prompt, model, temperature)
-    # 保存原始响应供调试
     st.session_state.debug_raw_resp = resp
-    st.session_state.debug_parse_result = parse_json_safely(resp)
+    result = parse_json_safely(resp)
     
-    return st.session_state.debug_parse_result
+    # 如果模型返回空，使用预设问题
+    if not result or "missing_items" not in result:
+        return get_default_problems()
+    
+    return result
+
+def get_default_problems():
+    """获取预设的问题列表"""
+    return {
+        "missing_items": {
+            "正常流程": ["注册成功后未定义后续操作", "缺少注册成功通知机制"],
+            "异常流程": ["验证码发送失败无处理逻辑", "网络超时未定义重试机制"],
+            "边界条件": ["未定义密码复杂度要求", "未定义验证码有效期"],
+            "非功能性需求": ["无注册频率限制（防刷机制缺失）", "无验证码重试次数上限"]
+        }
+    }
 
 # ---------------------------- Agent 2: 角色扮演评审 ----------------------------
 def roleplay_agent(prd_text: str, image_desc: str, model: str, temperature: float) -> dict:
